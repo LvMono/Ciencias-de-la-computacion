@@ -13,7 +13,7 @@ public class Arreglo {
         Random rand = new Random();
         
         for (int i = 0; i < n; i++) {
-            datos[i] = rand.nextInt(Integer.MAX_VALUE); 
+            datos[i] = rand.nextInt(Integer.MAX_VALUE); // cambiar a un valor designado entero si da estalla
         }
     }
 
