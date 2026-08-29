@@ -1,7 +1,15 @@
 package controller;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import model.Arreglo;
 import model.BinaryTreeSort;
@@ -13,583 +21,452 @@ import view.Interfaz;
 
 public class Controlador {
 
-    private Interfaz vista;
+    // nombre del archivo para guardar arreglos
+    private static final String ARCHIVO = "arreglos_algoritmo.txt";
 
-    private BubbleSort burbuja;
-    private RadixSort radix;
-    private QuickSort quick;
-    private ShellSort shell;
-    private BinaryTreeSort arbol;
+    // identificadores de cada algoritmo
+    private static final int BUBBLE_SORT = 1;
+    private static final int RADIX_SORT = 2;
+    private static final int QUICK_SORT = 3;
+    private static final int SHELL_SORT = 4;
+    private static final int BINARY_TREE_SORT = 5;
 
-    private final String ARCHIVO = "arreglos_algoritmo.txt";
+    // valor centinela devuelto cuando el usuario ingresa texto en lugar de numeros
+    private static final int VALOR_INESPERADO = Integer.MIN_VALUE;
 
+    // limite de errores consecutivos para abortar bucles infinitos
+    private static final int MAX_ERRORES = 3;
+
+    private final Interfaz vista;
+
+    // solucion de concurrencia para evitar que varios hilos compartan la misma instancia
+    // threadlocal garantiza que cada hilo reciba su propio objeto de ordenamiento
+    // evitando que el progreso de un hilo sobreescriba los atributos de otro
+    private final ThreadLocal<BubbleSort> burbuja = ThreadLocal.withInitial(BubbleSort::new);
+    private final ThreadLocal<RadixSort> radix = ThreadLocal.withInitial(RadixSort::new);
+    private final ThreadLocal<QuickSort> quick = ThreadLocal.withInitial(QuickSort::new);
+    private final ThreadLocal<ShellSort> shell = ThreadLocal.withInitial(ShellSort::new);
+    private final ThreadLocal<BinaryTreeSort> arbol = ThreadLocal.withInitial(BinaryTreeSort::new);
+
+    // monitor para sincronizar impresiones en consola y evitar mezcla de textos
+    private final Object lockImpresion = new Object();
+
+    // pool de hilos reutilizable para ejecuciones de calentamiento
+    private final ExecutorService warmupPool = Executors.newFixedThreadPool(4);
+
+    // inicializa la vista del programa
     public Controlador() {
-
         vista = new Interfaz();
-
-        burbuja = new BubbleSort();
-        radix = new RadixSort();
-        quick = new QuickSort();
-        shell = new ShellSort();
-        arbol = new BinaryTreeSort();
     }
 
+    // metodo de entrada para iniciar la logica principal
     public void iniciar() {
-
         Arreglo arreglo = new Arreglo();
-        boolean arregloListo = false;
 
-        // muestra los tamaños que ya existen en el archivo
+        mostrarArreglosGuardados(arreglo);
 
+        if (!prepararArreglo(arreglo)) {
+            return;
+        }
+
+        ejecutarMenuPrincipal(arreglo);
+    }
+
+    // lee el archivo de texto y muestra los tamanos disponibles
+    private void mostrarArreglosGuardados(Arreglo arreglo) {
         String tamanos = arreglo.obtenerTamanosGuardados(ARCHIVO);
 
-        vista.mostrarMensaje("\n=== ARREGLOS GUARDADOS ===");
+        vista.mostrarMensaje("\n*** ARREGLOS GUARDADOS ***");
 
-        if (tamanos.equals("el txt aun no existe o es ilegible.")
-                || tamanos.equals("no hay arreglos almacenados.")) {
+        boolean sinArreglos = tamanos.equals("el txt aun no existe o es ilegible.")
+                || tamanos.equals("no hay arreglos almacenados.");
 
-            vista.mostrarMensaje("No hay arreglos guardados.");
+        vista.mostrarMensaje(sinArreglos
+                ? "No hay arreglos guardados."
+                : "Tamanos disponibles: " + tamanos);
 
-        } else {
+        vista.mostrarMensaje("**************************");
+    }
 
-            vista.mostrarMensaje("Tamaños disponibles: " + tamanos);
-        }
+    // gestiona la creacion o carga de un arreglo manejando entradas no validas y bucles
+    private boolean prepararArreglo(Arreglo arreglo) {
+        int errores = 0;
 
-        vista.mostrarMensaje("==========================");
-
-        // generar o cargar el arreglo
-        
-        while (!arregloListo) {
-
+        while (errores < MAX_ERRORES) {
             vista.mostrarMenuTamano();
+            int opcion = leerOpcion();
 
-            int opcion = vista.capturarOpcion();
+            switch (opcion) {
+                case 1 -> {
+                    int n = leerTamano();
+                    if (n == VALOR_INESPERADO) {
+                        errores++;
+                        vista.mostrarMensaje("Valor invalido. Ingrese un numero entero para el tamano.");
+                        break;
+                    }
 
-            if (opcion == 1) {
+                    errores = 0;
+                    vista.mostrarMensaje("Generando arreglo de " + n + " elementos...");
+                    arreglo.generarAleatorio(n);
 
-                int n = vista.pedirTamano();
+                    vista.mostrarMensaje("Guardando arreglo en el archivo...");
+                    arreglo.guardarEnArchivo(ARCHIVO, n);
 
-                vista.mostrarMensaje(
-                    "Generando arreglo de " + n + " elementos..."
-                );
-
-                arreglo.generarAleatorio(n);
-
-                vista.mostrarMensaje("Guardando arreglo en el archivo...");
-
-                arreglo.guardarEnArchivo(ARCHIVO, n);
-
-                vista.mostrarMensaje(
-                    "Se genero y guardo el arreglo correctamente."
-                );
-
-                arregloListo = true;
-
-            } else if (opcion == 2) {
-
-                vista.mostrarMensaje(
-                    "Ingrese el tamaño del arreglo que desea cargar:"
-                );
-
-                int n = vista.capturarOpcion();
-
-                vista.mostrarMensaje(
-                    "Cargando arreglo de " + n + " elementos..."
-                );
-
-                if (arreglo.cargarDesdeArchivo(ARCHIVO, n)) {
-
-                    vista.mostrarMensaje(
-                        "Arreglo cargado correctamente."
-                    );
-
-                    arregloListo = true;
-
-                } else {
-
-                    vista.mostrarMensaje(
-                        "No se encontro un arreglo con ese tamaño."
-                    );
+                    vista.mostrarMensaje("Se genero y guardo el arreglo correctamente.");
+                    return true;
                 }
 
-            } else {
+                case 2 -> {
+                    vista.mostrarMensaje("Ingrese el tamano del arreglo que desea cargar:");
+                    int n = leerOpcion();
 
-                vista.mostrarMensaje("Opcion no valida.");
+                    if (n == VALOR_INESPERADO) {
+                        errores++;
+                        vista.mostrarMensaje("Valor invalido. Ingrese un numero entero para el tamano.");
+                        break;
+                    }
+
+                    errores = 0;
+                    vista.mostrarMensaje("Cargando arreglo de " + n + " elementos...");
+
+                    if (arreglo.cargarDesdeArchivo(ARCHIVO, n)) {
+                        vista.mostrarMensaje("Arreglo cargado correctamente.");
+                        return true;
+                    }
+
+                    vista.mostrarMensaje("No se encontro un arreglo con ese tamano.");
+                }
+
+                case VALOR_INESPERADO -> {
+                    errores++;
+                    vista.mostrarMensaje("Entrada no reconocida. Intentos restantes: " + (MAX_ERRORES - errores));
+                }
+
+                default -> {
+                    errores = 0;
+                    vista.mostrarMensaje("Opcion fuera de rango.");
+                }
             }
         }
 
-      // menu de los algoritmos
-        
-        while (arregloListo) {
+        vista.mostrarMensaje("Multiples errores detectados. Saliendo por seguridad...");
+        return false;
+    }
 
+    // menu principal con proteccion de intentos para evitar la consola infinita
+    private void ejecutarMenuPrincipal(Arreglo arreglo) {
+        boolean continuar = true;
+        int errores = 0;
+
+        while (continuar && errores < MAX_ERRORES) {
             vista.mostrarMenu();
+            int opcion = leerOpcion();
 
-            int opcion = vista.capturarOpcion();
-
-            if (opcion == 1) {
-
-                medirBubbleSort(arreglo.obtenerCopia());
-
-            } else if (opcion == 2) {
-
-                medirRadixSort(arreglo.obtenerCopia());
-
-            } else if (opcion == 3) {
-
-                medirQuickSort(arreglo.obtenerCopia());
-
-            } else if (opcion == 4) {
-
-                medirShellSort(arreglo.obtenerCopia());
-
-            } else if (opcion == 5) {
-
-                medirBinaryTreeSort(arreglo.obtenerCopia());
-
-            } else if (opcion == 6) {
-
-                vista.mostrarMensaje("Saliendo del programa...");
-                break;
-
-            } else if (opcion == 7) {
-
-                compararAlgoritmos(arreglo.obtenerCopia());
-
-            } else {
-
-                vista.mostrarMensaje("Opcion no valida.");
+            switch (opcion) {
+                case 1 -> { errores = 0; medirBubbleSort(arreglo.obtenerCopia()); }
+                case 2 -> { errores = 0; medirRadixSort(arreglo.obtenerCopia()); }
+                case 3 -> { errores = 0; medirQuickSort(arreglo.obtenerCopia()); }
+                case 4 -> { errores = 0; medirShellSort(arreglo.obtenerCopia()); }
+                case 5 -> { errores = 0; medirBinaryTreeSort(arreglo.obtenerCopia()); }
+                case 6 -> {
+                    errores = 0;
+                    vista.mostrarMensaje("Finalizando ejecucion...");
+                    warmupPool.shutdown();
+                    continuar = false;
+                }
+                case 7 -> { errores = 0; compararAlgoritmos(arreglo.obtenerCopia()); }
+                case VALOR_INESPERADO -> {
+                    errores++;
+                    vista.mostrarMensaje("Entrada no reconocida. Intentos restantes: " + (MAX_ERRORES - errores));
+                }
+                default -> {
+                    errores = 0;
+                    vista.mostrarMensaje("Opcion no valida.");
+                }
             }
-
             vista.mostrarMensaje("");
         }
+
+        if (errores >= MAX_ERRORES) {
+            vista.mostrarMensaje("Cierre forzado por multiples entradas no validas consecutivas.");
+            warmupPool.shutdown();
+        }
     }
 
-
-    // mediciones individuales
-
+    // bloque de metodos para medir un solo algoritmo especifico
     private void medirBubbleSort(int[] arreglo) {
-
-        vista.mostrarMensaje(
-            "\nOrdenando con BubbleSort..."
-        );
-
-        medirOrdenamiento("BubbleSort", arreglo, 1);
+        vista.mostrarMensaje("\nOrdenando con BubbleSort...");
+        medirOrdenamiento("BubbleSort", arreglo, BUBBLE_SORT);
     }
-
 
     private void medirRadixSort(int[] arreglo) {
-
-        vista.mostrarMensaje(
-            "\nOrdenando con RadixSort..."
-        );
-
-        medirOrdenamiento("RadixSort", arreglo, 2);
+        vista.mostrarMensaje("\nOrdenando con RadixSort...");
+        medirOrdenamiento("RadixSort", arreglo, RADIX_SORT);
     }
-
 
     private void medirQuickSort(int[] arreglo) {
-
-        vista.mostrarMensaje(
-            "\nOrdenando con QuickSort..."
-        );
-
-        medirOrdenamiento("QuickSort", arreglo, 3);
+        vista.mostrarMensaje("\nOrdenando con QuickSort...");
+        medirOrdenamiento("QuickSort", arreglo, QUICK_SORT);
     }
-
 
     private void medirShellSort(int[] arreglo) {
-
-        vista.mostrarMensaje(
-            "\nOrdenando con ShellSort..."
-        );
-
-        medirOrdenamiento("ShellSort", arreglo, 4);
+        vista.mostrarMensaje("\nOrdenando con ShellSort...");
+        medirOrdenamiento("ShellSort", arreglo, SHELL_SORT);
     }
-
 
     private void medirBinaryTreeSort(int[] arreglo) {
-
-        vista.mostrarMensaje(
-            "\nOrdenando con BinaryTreeSort..."
-        );
-
-        medirOrdenamiento("BinaryTreeSort", arreglo, 5);
+        vista.mostrarMensaje("\nOrdenando con BinaryTreeSort...");
+        medirOrdenamiento("BinaryTreeSort", arreglo, BINARY_TREE_SORT);
     }
 
-
-    private void medirOrdenamiento(
-            String nombre,
-            int[] arreglo,
-            int algoritmo) {
-
-        vista.mostrarMensaje(
-            "Iniciando medicion..."
-        );
+    // ejecuta el cronometro y el algoritmo seleccionado
+    private void medirOrdenamiento(String nombre, int[] arreglo, int algoritmo) {
+        vista.mostrarMensaje("Iniciando medicion...");
 
         long inicio = System.nanoTime();
-
         ejecutarAlgoritmo(arreglo, algoritmo);
-
         long fin = System.nanoTime();
 
         mostrarTiempo(nombre, inicio, fin);
     }
 
-
-    // muestra tiempo
-
-
-    private void mostrarTiempo(
-            String algoritmo,
-            long inicio,
-            long fin) {
-
+    // calcula la diferencia y formatea el resultado en pantalla
+    private void mostrarTiempo(String algoritmo, long inicio, long fin) {
         long tiempoNano = fin - inicio;
-
         double tiempoMili = tiempoNano / 1_000_000.0;
 
         vista.mostrarMensaje(
-            "Tiempo " + algoritmo + ": "
-            + tiempoNano + " ns"
-            + " | "
-            + String.format("%.6f", tiempoMili)
-            + " ms"
+                "Tiempo " + algoritmo + ": " + tiempoNano + " ns"
+                + " | " + String.format("%.6f", tiempoMili) + " ms"
         );
     }
 
-
-
-    // cuando se compara en general
-
-
+    // orquesta la comparativa general utilizando ejecucion en paralelo
     private void compararAlgoritmos(int[] original) {
-
         int n = original.length;
 
-        vista.mostrarMensaje(
-            "\n=============================================="
-        );
+        vista.mostrarMensaje("\n**********************************************");
+        vista.mostrarMensaje("        COMPARACION DE ALGORITMOS");
+        vista.mostrarMensaje("**********************************************");
+        vista.mostrarMensaje("Tamano del arreglo: " + n);
 
-        vista.mostrarMensaje(
-            "        COMPARACION DE ALGORITMOS"
-        );
-
-        vista.mostrarMensaje(
-            "=============================================="
-        );
-
-        vista.mostrarMensaje(
-            "Tamaño del arreglo: " + n
-        );
-
-        /*
-         * la cantidad de repeticiones de mejor peor y promedio
-         * se hace en base a que tan grande es el n escojido
-         */
         int repeticiones = obtenerRepeticiones(n);
+        vista.mostrarMensaje("Repeticiones por algoritmo: " + repeticiones);
 
-        vista.mostrarMensaje(
-            "Repeticiones por algoritmo: " + repeticiones
-        );
+        int[][] casos = prepararCasosEnParalelo(original);
+        if (casos == null) {
+            return;
+        }
 
+        ejecutarComparacionesEnParalelo(casos, repeticiones);
 
-        vista.mostrarMensaje(
-            "\n------------- MEJOR CASO -------------"
-        );
-
-        int[] mejorCaso = crearMejorCaso(original);
-
-        mostrarComparacion(mejorCaso, repeticiones);
-
-        mejorCaso = null;
-
-
-
-        vista.mostrarMensaje(
-            "\n------------ CASO PROMEDIO ------------"
-        );
-
-        int[] casoPromedio = crearCasoPromedio(original);
-
-        mostrarComparacion(casoPromedio, repeticiones);
-
-        casoPromedio = null;
-
-
-
-        vista.mostrarMensaje(
-            "\n-------------- PEOR CASO --------------"
-        );
-
-        int[] peorCaso = crearPeorCaso(original);
-
-        mostrarComparacion(peorCaso, repeticiones);
-
-        peorCaso = null;
-
-
-        vista.mostrarMensaje(
-            "\n=============================================="
-        );
+        vista.mostrarMensaje("\n**********************************************");
     }
 
+    // construye los arreglos mejor promedio y peor simultaneamente
+    private int[][] prepararCasosEnParalelo(int[] original) {
+        vista.mostrarMensaje("\nPreparando los 3 casos en paralelo...");
 
+        ExecutorService prepExecutor = Executors.newFixedThreadPool(3);
 
-    // repeticiones segun el tañano
+        Future<int[]> futureMejor = prepExecutor.submit(() -> crearMejorCaso(original));
+        Future<int[]> futurePromedio = prepExecutor.submit(() -> crearCasoPromedio(original));
+        Future<int[]> futurePeor = prepExecutor.submit(() -> crearPeorCaso(original));
 
+        try {
+            int[] mejorCaso = futureMejor.get();
+            int[] casoPromedio = futurePromedio.get();
+            int[] peorCaso = futurePeor.get();
 
-    private int obtenerRepeticiones(int n) {
-
-        if (n <= 10000) {
-
-            return 10;
-
-        } else if (n <= 100000) {
-
-            return 5;
-
-        } else if (n <= 1000000) {
-
-            return 3;
-
-        } else {
-
-            return 1;
+            return new int[][] { mejorCaso, casoPromedio, peorCaso };
+        } catch (InterruptedException | ExecutionException e) {
+            Thread.currentThread().interrupt();
+            vista.mostrarMensaje("Error en la preparacion de datos: " + e.getMessage());
+            return null;
+        } finally {
+            prepExecutor.shutdown();
         }
     }
 
+    // corre las comparaciones de cada escenario al mismo tiempo
+    // esto reduce el tiempo total a costa de una ligera variacion en los nanosegundos
+    private void ejecutarComparacionesEnParalelo(int[][] casos, int repeticiones) {
+        vista.mostrarMensaje("Ejecutando comparaciones concurrentes...\n");
 
+        ExecutorService comparacionExecutor = Executors.newFixedThreadPool(3);
 
+        comparacionExecutor.execute(() -> ejecutarBloqueComparacion("MEJOR CASO", casos[0], repeticiones));
+        comparacionExecutor.execute(() -> ejecutarBloqueComparacion("CASO PROMEDIO", casos[1], repeticiones));
+        comparacionExecutor.execute(() -> ejecutarBloqueComparacion("PEOR CASO", casos[2], repeticiones));
+
+        comparacionExecutor.shutdown();
+
+        try {
+            comparacionExecutor.awaitTermination(1, TimeUnit.HOURS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    // envoltorio para aislar visualmente el reporte de cada caso
+    private void ejecutarBloqueComparacion(String titulo, int[] arreglo, int repeticiones) {
+        synchronized (lockImpresion) {
+            vista.mostrarMensaje("\n------------- " + titulo + " -------------");
+        }
+        mostrarComparacion(arreglo, repeticiones);
+    }
+
+    // ajusta las iteraciones dependiendo del peso del arreglo para no saturar memoria
+    private int obtenerRepeticiones(int n) {
+        if (n <= 10_000) return 10;
+        if (n <= 100_000) return 5;
+        if (n <= 1_000_000) return 3;
+        return 1;
+    }
+
+    // genera un escenario optimo con datos ya ordenados
     private int[] crearMejorCaso(int[] original) {
-
-        vista.mostrarMensaje(
-            "Preparando mejor caso..."
-        );
-
+        imprimirSincronizado("Preparando mejor caso...");
         int[] arreglo = original.clone();
-
         Arrays.sort(arreglo);
-
         return arreglo;
     }
 
-
-
-
+    // genera un escenario con entropia usando valores aleatorios
     private int[] crearCasoPromedio(int[] original) {
-
-        vista.mostrarMensaje(
-            "Preparando caso promedio..."
-        );
-
+        imprimirSincronizado("Preparando caso promedio...");
         int[] arreglo = original.clone();
-
         Random random = new Random();
 
         for (int i = 0; i < arreglo.length; i++) {
-
-            arreglo[i] = random.nextInt(100000);
+            arreglo[i] = random.nextInt(100_000);
         }
-
         return arreglo;
     }
 
-
-
-
+    // genera un escenario con los datos ordenados a la inversa
     private int[] crearPeorCaso(int[] original) {
-
-        vista.mostrarMensaje(
-            "Preparando peor caso..."
-        );
-
+        imprimirSincronizado("Preparando peor caso...");
         int[] arreglo = original.clone();
-
         Arrays.sort(arreglo);
 
         int izquierda = 0;
         int derecha = arreglo.length - 1;
 
         while (izquierda < derecha) {
-
             int temporal = arreglo[izquierda];
-
             arreglo[izquierda] = arreglo[derecha];
             arreglo[derecha] = temporal;
-
             izquierda++;
             derecha--;
         }
-
         return arreglo;
     }
 
+    // imprime los resultados tabulados por cada metodo de ordenamiento
+    private void mostrarComparacion(int[] arreglo, int repeticiones) {
+        synchronized (lockImpresion) {
+            vista.mostrarMensaje("Algoritmo             Mejor(ns)       Promedio(ns)       Peor(ns)");
+            vista.mostrarMensaje("-----------------------------------------------------------------------");
+        }
 
-
-    private void mostrarComparacion(
-            int[] arreglo,
-            int repeticiones) {
-
-        vista.mostrarMensaje(
-            "Algoritmo             Mejor(ns)       Promedio(ns)       Peor(ns)"
-        );
-
-        vista.mostrarMensaje(
-            "-----------------------------------------------------------------------"
-        );
-
-
-        medirYMostrar(
-            "BubbleSort",
-            arreglo,
-            repeticiones,
-            1
-        );
-
-
-        medirYMostrar(
-            "RadixSort",
-            arreglo,
-            repeticiones,
-            2
-        );
-
-
-        medirYMostrar(
-            "QuickSort",
-            arreglo,
-            repeticiones,
-            3
-        );
-
-
-        medirYMostrar(
-            "ShellSort",
-            arreglo,
-            repeticiones,
-            4
-        );
-
-
-        medirYMostrar(
-            "BinaryTreeSort",
-            arreglo,
-            repeticiones,
-            5
-        );
+        medirYMostrar("BubbleSort", arreglo, repeticiones, BUBBLE_SORT);
+        medirYMostrar("RadixSort", arreglo, repeticiones, RADIX_SORT);
+        medirYMostrar("QuickSort", arreglo, repeticiones, QUICK_SORT);
+        medirYMostrar("ShellSort", arreglo, repeticiones, SHELL_SORT);
+        medirYMostrar("BinaryTreeSort", arreglo, repeticiones, BINARY_TREE_SORT);
     }
 
-
-    // =========================================================
-    // MEDIR ALGORITMO
-    // =========================================================
-
-    private void medirYMostrar(
-            String nombre,
-            int[] arreglo,
-            int repeticiones,
-            int algoritmo) {
+    // realiza las pasadas oficiales de un algoritmo y consolida sus tiempos
+    private void medirYMostrar(String nombre, int[] arreglo, int repeticiones, int algoritmo) {
+        calentarEnParalelo(arreglo, algoritmo);
 
         long mejor = Long.MAX_VALUE;
         long peor = 0;
         long suma = 0;
 
-
-        /*
-         * Para arreglos pequeños hacemos unas ejecuciones previas.
-         * Para arreglos grandes no se hace calentamiento.
-         */
-        if (arreglo.length <= 1000000) {
-
-            for (int i = 0; i < 2; i++) {
-
-                int[] copia = arreglo.clone();
-
-                ejecutarAlgoritmo(copia, algoritmo);
-            }
-        }
-
-
-        // mediciones
-        for (int i = 0; i < repeticiones; i++) {
-
-            vista.mostrarMensaje(
-                "Midiendo " + nombre
-                + " (" + (i + 1) + "/" + repeticiones + ")..."
-            );
+        for (int i = 1; i <= repeticiones; i++) {
+            imprimirSincronizado("Midiendo " + nombre + " (" + i + "/" + repeticiones + ")...");
 
             int[] copia = arreglo.clone();
 
             long inicio = System.nanoTime();
-
             ejecutarAlgoritmo(copia, algoritmo);
-
             long fin = System.nanoTime();
 
             long tiempo = fin - inicio;
-
             suma += tiempo;
-
-
-            if (tiempo < mejor) {
-
-                mejor = tiempo;
-            }
-
-
-            if (tiempo > peor) {
-
-                peor = tiempo;
-            }
+            mejor = Math.min(mejor, tiempo);
+            peor = Math.max(peor, tiempo);
         }
-
 
         long promedio = suma / repeticiones;
 
-
-        vista.mostrarMensaje(
-            String.format(
-                "%-20s %12d %18d %15d",
-                nombre,
-                mejor,
-                promedio,
-                peor
-            )
-        );
-
-
-        vista.mostrarMensaje(
-            String.format(
-                "                     Promedio: %.6f ms",
-                promedio / 1_000_000.0
-            )
-        );
+        synchronized (lockImpresion) {
+            vista.mostrarMensaje(String.format("%-20s %12d %18d %15d", nombre, mejor, promedio, peor));
+            vista.mostrarMensaje(String.format("                     Promedio: %.6f ms", promedio / 1_000_000.0));
+        }
     }
 
+    // ejecuta tareas fantasmas para que el compilador jit optimice la ruta de codigo
+    private void calentarEnParalelo(int[] arreglo, int algoritmo) {
+        if (arreglo.length > 1_000_000) {
+            return;
+        }
 
-    private void ejecutarAlgoritmo(
-            int[] arreglo,
-            int algoritmo) {
+        List<Future<?>> tareas = new ArrayList<>();
 
-        if (algoritmo == 1) {
+        for (int i = 0; i < 2; i++) {
+            int[] copia = arreglo.clone();
+            tareas.add(warmupPool.submit(() -> ejecutarAlgoritmo(copia, algoritmo)));
+        }
 
-            burbuja.ordenar(arreglo);
+        for (Future<?> tarea : tareas) {
+            try {
+                tarea.get(10, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (ExecutionException | TimeoutException e) {
+                imprimirSincronizado("Fallo en fase de calentamiento: " + e.getMessage());
+            }
+        }
+    }
 
-        } else if (algoritmo == 2) {
+    // delega la ordenacion a la instancia contenida en el threadlocal
+    private void ejecutarAlgoritmo(int[] arreglo, int algoritmo) {
+        switch (algoritmo) {
+            case BUBBLE_SORT -> burbuja.get().ordenar(arreglo);
+            case RADIX_SORT -> radix.get().ordenar(arreglo);
+            case QUICK_SORT -> quick.get().ordenar(arreglo);
+            case SHELL_SORT -> shell.get().ordenar(arreglo);
+            case BINARY_TREE_SORT -> arbol.get().ordenar(arreglo);
+            default -> throw new IllegalArgumentException("Algoritmo no soportado: " + algoritmo);
+        }
+    }
 
-            radix.ordenar(arreglo);
+    // agrupa las impresiones bajo un monitor para no entrelazar lineas de diferentes hilos
+    private void imprimirSincronizado(String mensaje) {
+        synchronized (lockImpresion) {
+            vista.mostrarMensaje(mensaje);
+        }
+    }
 
-        } else if (algoritmo == 3) {
+    // funcion protectora que intercepta errores si el usuario tipea basura
+    // devuelve un entero negativo inusual para que la logica superior lo filtre
+    private int leerOpcion() {
+        try {
+            return vista.capturarOpcion();
+        } catch (Exception e) {
+            return VALOR_INESPERADO;
+        }
+    }
 
-            quick.ordenar(arreglo);
-
-        } else if (algoritmo == 4) {
-
-            shell.ordenar(arreglo);
-
-        } else if (algoritmo == 5) {
-
-            arbol.ordenar(arreglo);
+    // opera bajo el mismo principio de seguridad que leeropcion
+    private int leerTamano() {
+        try {
+            return vista.pedirTamano();
+        } catch (Exception e) {
+            return VALOR_INESPERADO;
         }
     }
 }
