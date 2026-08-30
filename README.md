@@ -1,6 +1,6 @@
 #Taller Algoritmos 
 
-	  Nota: el txt no deja subirlo, pesa mucho 
+	  Nota: el txt no deja subirlo, pesa mucho, y el bublle con n² tarda 2-3 dias
 	  Estructura del proyecto MVC Java 
 	
 		Model -> contiene la generacion de los arreglos aleatorios y la logica de los 
