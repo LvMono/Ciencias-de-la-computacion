@@ -1,5 +1,6 @@
 #Taller Algoritmos 
 
+	  Nota: el txt no deja subirlo, pesa mucho 
 	  Estructura del proyecto MVC Java 
 	
 		Model -> contiene la generacion de los arreglos aleatorios y la logica de los 
