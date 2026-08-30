@@ -1,7 +1,8 @@
 #Taller Algoritmos 
 
 	  Nota: el txt no deja subirlo, pesa mucho, y el bublle con n² tarda 2-3 dias
-	  Estructura del proyecto MVC Java 
+	  Estructura del proyecto MVC Java, para que saque de una vez mejor y peor caso, cambiar en retun de 
+	  EjecutorAlgoritmos.java en model.service
 	
 		Model -> contiene la generacion de los arreglos aleatorios y la logica de los 
 		         algoritmos
