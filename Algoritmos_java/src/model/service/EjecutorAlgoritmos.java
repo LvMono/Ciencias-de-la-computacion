@@ -88,15 +88,15 @@ public final class EjecutorAlgoritmos {
     private int determinarRepeticiones(int tamanio) {
 
         if (tamanio <= 3_000) {
-            return 1;
+            return 3;
         }
 
         if (tamanio <= 30_000) {
-            return 1;
+            return 3;
         }
 
         if (tamanio <= 300_000) {
-            return 1;
+            return 3;
         }
 
         if (tamanio <= 3_000_000) {
